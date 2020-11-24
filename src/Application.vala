@@ -1,60 +1,67 @@
 /*
-* Copyright (c) 2020 - Today kerkkoh ()
+* Idk why I'm even including this license in here. I guess no warranty? YEAH! No warranty! You heard me.
 *
-* This program is free software; you can redistribute it and/or
-* modify it under the terms of the GNU General Public
-* License as published by the Free Software Foundation; either
-* version 2 of the License, or (at your option) any later version.
+* The MIT License (MIT)
 *
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-* General Public License for more details.
+* Copyright (c) 2020 Kerkkoh
 *
-* You should have received a copy of the GNU General Public
-* License along with this program; if not, write to the
-* Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
-* Boston, MA 02110-1301 USA
+* Permission is hereby granted, free of charge, to any person obtaining a copy
+* of this software and associated documentation files (the "Software"), to deal
+* in the Software without restriction, including without limitation the rights
+* to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+* copies of the Software, and to permit persons to whom the Software is
+* furnished to do so, subject to the following conditions:
 *
-* Authored by: kerkkoh <superihippo@gmail.com>
+* The above copyright notice and this permission notice shall be included in all
+* copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+* AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+* OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+* SOFTWARE.
+*
+* Authored by: Kerkkoh <superihippo@gmail.com>
 */
 
 struct User {
-    int64 album_count;
+    /*int64 album_count;
     string bio;
     string	cover_photo;
     int64 followee_count;
     int64 follower_count;
-    string handle;
+    string handle;*/
     string id;
-    bool is_verified;
-    string location;
+    /*bool is_verified;
+    string location;*/
     string name;
-    int64 playlist_count;
+    /*int64 playlist_count;
     int64 repost_count;
-    int64 track_count;
+    int64 track_count;*/
 }
 struct Track_Artwork {
     string img_150x150;
-    string img_480x480;
-    string img_1000x1000;
+    //string img_480x480;
+    //string img_1000x1000;
 }
 struct Track {
     Track_Artwork artwork;
-    string description;
-    string genre;
     string id;
-    string mood;
+    /*string mood;
     string release_date;
     string remix_parent_id;
     int64 repost_count;
     int64 favorite_count;
     string tags;
-    string title;
-    User user;
+    string description;
+    string genre;
     int64 duration;
     bool downloadable;
-    int64 play_count;
+    int64 play_count;*/
+    string title;
+    User user;
 }
 
 public class Application : Gtk.Application {
@@ -133,15 +140,15 @@ public class Application : Gtk.Application {
 
         return Track() {
             artwork = Track_Artwork () {
-                img_150x150 = raw_artwork.get_string_member ("150x150"),
-                img_480x480 = raw_artwork.get_string_member ("480x480"),
-                img_1000x1000 = raw_artwork.get_string_member ("1000x1000")
+                img_150x150 = raw_artwork.get_string_member ("150x150")//,
+                //img_480x480 = raw_artwork.get_string_member ("480x480"),
+                //img_1000x1000 = raw_artwork.get_string_member ("1000x1000")
             },
             id = raw_track.get_string_member ("id"),
             title = raw_track.get_string_member ("title"),
             user = User() {
                 id = raw_user.get_string_member ("id"),
-                handle = raw_user.get_string_member ("handle"),
+                //handle = raw_user.get_string_member ("handle"),
                 name = raw_user.get_string_member ("name")
             }
         };
@@ -189,7 +196,7 @@ public class Application : Gtk.Application {
         playing_label.set_label(some_track.user.name + " - " + some_track.title);
         album_art.set_from_pixbuf(get_image (some_track.artwork.img_150x150));
 
-        show_notification(some_track.title, "By " + some_track.user.handle);
+        show_notification(some_track.title, "By " + some_track.user.name);
     }
 
     private void pause_or_play (ref Gtk.LinkButton link_button, ref Gtk.Label playing_label, ref Gtk.Image album_art, ref Gtk.Button pause_button, ref Gtk.Button play_button) {
@@ -209,7 +216,7 @@ public class Application : Gtk.Application {
 
     protected override void activate () {
         get_api_endpoint();
-        tracks = req_data_array ("tracks/trending");
+        tracks = req_data_array ("tracks/trending"); //users/DN31N/tracks
         var main_window = new Gtk.ApplicationWindow (this);
         main_window.set_icon_name("applications-multimedia");
         main_window.default_height = 300;
