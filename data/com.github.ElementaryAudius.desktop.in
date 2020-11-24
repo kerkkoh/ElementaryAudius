@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Name
+Comment=Comment
+GenericName=GenericName
+Exec=com.github.ElementaryAudius %U
+Icon=com.github.ElementaryAudius
+Terminal=false
+Categories=Utility;GTK;Development;
+Keywords=Develop
+X-GNOME-UsesNotifications=true
