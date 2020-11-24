@@ -5,7 +5,7 @@ public class StreamPlayer {
     const bool DEBUG = false;
 
     private MainLoop loop = new MainLoop ();
-    dynamic Element m_play;
+    dynamic Element m_play = ElementFactory.make ("playbin", "play");
 
     private void foreach_tag (Gst.TagList list, string tag) {
         switch (tag) {
@@ -56,16 +56,21 @@ public class StreamPlayer {
         return true;
     }
 
-    private bool is_playing () {
-        State state;
-        State pending;
-        ClockTime ct = 100000;
-        StateChangeReturn succ = m_play.get_state(out state, out pending, ct);
-        if (succ == StateChangeReturn.FAILURE) return false;
-        return (state == State.PLAYING);
+    public bool is_playing () {
+        try {
+            State state;
+            State pending;
+            ClockTime ct = 100000;
+            StateChangeReturn succ = m_play.get_state(out state, out pending, ct);
+            if (succ == StateChangeReturn.FAILURE) return false;
+            return (state == State.PLAYING);
+        } catch (Error e) {
+            return false;
+        }
     }
 
     public void play (string stream) {
+        if (is_playing ()) stop();
         m_play = ElementFactory.make ("playbin", "play");
         m_play.uri = stream;
 
@@ -74,15 +79,11 @@ public class StreamPlayer {
 
         m_play.set_state (State.PLAYING);
 
-        //loop.run ();
         return;
     }
 
     public void stop () {
-        if (is_playing ()) {
-            m_play.set_state (State.NULL);
-            loop.quit ();
-        }
+        m_play.set_state (State.NULL);
     }
 
     public void pause () {

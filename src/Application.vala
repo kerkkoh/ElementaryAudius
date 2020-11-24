@@ -64,12 +64,23 @@ public class Application : Gtk.Application {
     private Json.Array tracks = new Json.Array ();
     private int32 total_tracks = 0;
     private uint track_idx = 0;
+    private bool has_played = false;
+    private bool show_notifications = true;
 
     public Application () {
         Object (
             application_id: "com.github.ElementaryAudius",
             flags: ApplicationFlags.FLAGS_NONE
         );
+    }
+
+    private void show_notification (string title, string body, string icon = "applications-multimedia") {
+        if (!show_notifications) return;
+
+        var notification = new Notification (_(title));
+        notification.set_body (_(body));
+        notification.set_icon (new GLib.ThemedIcon (icon));
+        send_notification ("com.github.kerkkoh.ElementaryAudius", notification);
     }
 
     private void get_api_endpoint () {
@@ -98,9 +109,13 @@ public class Application : Gtk.Application {
     }
 
     // Catch me if you can
-    private Json.Array req_data_array(string route) throws Error {
+    private Json.Array req_data_array(string route, string query_parameters = "") throws Error {
         var session = new Soup.Session ();
-        var message = new Soup.Message ("GET", api_endpoint+"/v1/"+route);
+        var q_params = "?app_name=ElementaryAudius";
+        if (query_parameters != "") {
+            q_params += query_parameters;
+        }
+        var message = new Soup.Message ("GET", api_endpoint+"/v1/"+route+q_params);
         // print(api_endpoint+"/v1/"+route);
         session.send_message (message);
 
@@ -133,21 +148,19 @@ public class Application : Gtk.Application {
     }
 
     private Gdk.Pixbuf get_image (string uri) {
-        print("get_image\n");
         var session = new Soup.Session ();
         var message = new Soup.Message ("GET", uri);
         session.send_message (message);
 
         var mem_ipt_stream = new GLib.MemoryInputStream.from_data(message.response_body.data);
         return new Gdk.Pixbuf.from_stream(mem_ipt_stream);
-        // stdout.printf("%d x %d\n", pixbuf.width, pixbuf.height);
     }
 
-    private Track get_trending (bool in_order = true) {
+    private Track get_trending (bool in_order = true, int delta = 0) {
         try {
             total_tracks = (int32) tracks.get_length ();
             if (in_order) {
-                track_idx++;
+                track_idx += delta;
             } else {
                 track_idx = (uint) GLib.Random.int_range(0, total_tracks);
             }
@@ -158,16 +171,14 @@ public class Application : Gtk.Application {
         } catch (Error e) {
             stderr.printf ("I guess something is not working...\n");
 
-            var notification = new Notification (_("Error...\n"));
-            notification.set_body (_("My bad, something's not working again..."));
-            send_notification ("com.github.kerkkoh.ElementaryAudius", notification);
+            show_notification("Error...", "My bad, something's wrong with the connection between ElementaryAudius and Audius... Try again later?", "network-error");
 
             return Track() {title = ""};
         }
     }
 
-    private void play(bool in_order, ref Gtk.LinkButton link_button, ref Gtk.Label playing_label, ref Gtk.Image album_art) {
-        var some_track = get_trending (in_order);
+    private void play(ref Gtk.LinkButton link_button, ref Gtk.Label playing_label, ref Gtk.Image album_art, bool in_order, int delta = 0) {
+        var some_track = get_trending (in_order, delta);
 
         link_button.set_uri("https://audius.co/tracks/"+some_track.id);
 
@@ -178,10 +189,22 @@ public class Application : Gtk.Application {
         playing_label.set_label(some_track.user.name + " - " + some_track.title);
         album_art.set_from_pixbuf(get_image (some_track.artwork.img_150x150));
 
-        var notification = new Notification (_(some_track.title));
-        notification.set_body (_("By " + some_track.user.handle));
-        notification.set_icon (new GLib.ThemedIcon ("applications-multimedia"));
-        send_notification ("com.github.kerkkoh.ElementaryAudius", notification);
+        show_notification(some_track.title, "By " + some_track.user.handle);
+    }
+
+    private void pause_or_play (ref Gtk.LinkButton link_button, ref Gtk.Label playing_label, ref Gtk.Image album_art, ref Gtk.Button pause_button, ref Gtk.Button play_button) {
+        if (!has_played) {
+            play(ref link_button, ref playing_label, ref album_art, true, 0);
+            has_played = true;
+        }
+        if (player.is_playing ()) {
+            pause_button.hide();
+            play_button.show();
+        } else {
+            play_button.hide();
+            pause_button.show();
+        }
+        player.pause ();
     }
 
     protected override void activate () {
@@ -189,23 +212,27 @@ public class Application : Gtk.Application {
         tracks = req_data_array ("tracks/trending");
         var main_window = new Gtk.ApplicationWindow (this);
         main_window.set_icon_name("applications-multimedia");
-        main_window.default_height = 400;
+        main_window.default_height = 300;
         main_window.default_width = 280;
         main_window.title = "ElementaryAudius";
         var title_label = new Gtk.Label (_("Now playing:"));
         var playing_label = new Gtk.Label (_("... ... ... ..."));
         var album_art = new Gtk.Image ();
-        var play_button = new Gtk.Button.with_label (_("Play random trending track"));
-        var play_in_order_button = new Gtk.Button.with_label (_("Play next trending track"));
-        var stop_button = new Gtk.Button.with_label (_("Stop"));
-        var pause_button = new Gtk.Button.with_label (_("Pause"));
+        var random_button = new Gtk.Button.with_label (_("Play random trending track"));
+        var previous_button = new Gtk.Button.from_icon_name("media-skip-backward-symbolic");
+        var next_button = new Gtk.Button.from_icon_name("media-skip-forward-symbolic");
+        var pause_button = new Gtk.Button.from_icon_name("media-playback-pause-symbolic");
+        var play_button = new Gtk.Button.from_icon_name("media-playback-start-symbolic");
+        var show_notif_toggle = new Gtk.Switch ();
+        show_notif_toggle.set_active(true);
+        var show_notif_label = new Gtk.Label(_("Show notifications"));
         var link_button = new Gtk.LinkButton.with_label ("https://audius.co/trending", _("Open this track on Audius.co"));
         
         var grid = new Gtk.Grid ();
         grid.orientation = Gtk.Orientation.VERTICAL;
         grid.row_spacing = 6;
         grid.column_spacing = 6;
-        // really? really.
+        // Very sketchy padding work here buddy
         var padding_left = new Gtk.Label (_(" "));
         var padding_right = new Gtk.Label (_(" "));
         grid.attach(padding_left, -1, 99, 1, 1);
@@ -213,37 +240,59 @@ public class Application : Gtk.Application {
         grid.add (title_label);
         grid.add (playing_label);
         grid.add (album_art);
-        grid.add (play_button);
-        grid.add (play_in_order_button);
-        grid.add (stop_button);
-        grid.add (pause_button);
+        grid.add (random_button);
+        var buttons = new Gtk.Grid ();
+        buttons.attach(previous_button, 0, 0, 1, 1);
+        buttons.attach(pause_button, 1, 0, 1, 1);
+        buttons.attach(play_button, 1, 0, 1, 1);
+        buttons.attach(next_button, 2, 0, 1, 1);
+        grid.add(buttons);
+        var notif_grid = new Gtk.Grid ();
+        notif_grid.column_spacing = 6;
+        // var notif_padding = new Gtk.Label (_(" "));
+        notif_grid.attach(show_notif_toggle, 0, 0, 1, 1);
+        // notif_grid.attach(notif_padding, 1, 0, 1, 1);
+        notif_grid.attach(show_notif_label, 2, 0, 1, 1);
+        grid.add (notif_grid);
         grid.add (link_button);
         player = new StreamPlayer ();
 
         title_label.set_hexpand(true);
         playing_label.set_hexpand(true);
+        playing_label.set_line_wrap(true);
+        playing_label.set_justify(Gtk.Justification.CENTER);
         album_art.set_hexpand(true);
+        random_button.set_hexpand(true);
+        previous_button.set_hexpand(true);
+        next_button.set_hexpand(true);
         play_button.set_hexpand(true);
-        play_in_order_button.set_hexpand(true);
-        stop_button.set_hexpand(true);
         pause_button.set_hexpand(true);
-        link_button.set_hexpand(true);
+        show_notif_label.set_justify(Gtk.Justification.LEFT);
+        link_button.set_hexpand(false);
 
-        play_button.clicked.connect (() => {
-            play(false, ref link_button, ref playing_label, ref album_art);
+        random_button.clicked.connect (() => {
+            play(ref link_button, ref playing_label, ref album_art, false);
         });
-        play_in_order_button.clicked.connect (() => {
-            play(true, ref link_button, ref playing_label, ref album_art);
+        previous_button.clicked.connect (() => {
+            play(ref link_button, ref playing_label, ref album_art, true, -1);
         });
-        stop_button.clicked.connect (() => {
-            player.stop ();
+        next_button.clicked.connect (() => {
+            play(ref link_button, ref playing_label, ref album_art, true, 1);
         });
         pause_button.clicked.connect (() => {
-            player.pause ();
+            pause_or_play(ref link_button, ref playing_label, ref album_art, ref pause_button, ref play_button);
+        });
+        play_button.clicked.connect (() => {
+            pause_or_play(ref link_button, ref playing_label, ref album_art, ref pause_button, ref play_button);
+        });
+        show_notif_toggle.state_set.connect (() => {
+            show_notifications = !show_notif_toggle.get_state();
+            return false;
         });
 
         main_window.add (grid);
         main_window.show_all ();
+        pause_button.hide();
     }
 
     public static int main (string[] args) {
