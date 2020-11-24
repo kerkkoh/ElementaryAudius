@@ -55,6 +55,8 @@ public class Application : Gtk.Application {
 
     private static string api_endpoint = "https://discoveryprovider.audius.co";
     private static StreamPlayer player;
+    private Json.Array tracks;
+    private int32 total_tracks = 0;
 
     public Application () {
         Object (
@@ -64,7 +66,7 @@ public class Application : Gtk.Application {
     }
 
     private void get_api_endpoint () {
-        var uri = "https://api.audius.co/";//"http://services.gisgraphy.com/fulltext/fulltextsearch?q=%s&format=JSON&indent=true&lang=en&from=1&to=10".printf ("asakusa");
+        var uri = "https://api.audius.co/";
 
         var session = new Soup.Session ();
         var message = new Soup.Message ("GET", uri);
@@ -88,39 +90,49 @@ public class Application : Gtk.Application {
         }
     }
 
-    private Track get_trending () {
+    // Catch me if you can
+    private Json.Array req_data_array(string route) {
         var session = new Soup.Session ();
-        var message = new Soup.Message ("GET", api_endpoint+"/v1/tracks/trending");
+        var message = new Soup.Message ("GET", api_endpoint+"/v1/"+route);
         session.send_message (message);
-    
+
+        var parser = new Json.Parser ();
+        parser.load_from_data ((string) message.response_body.flatten ().data, -1);
+
+        var root_object = parser.get_root ().get_object ();
+        return root_object.get_array_member ("data");
+    }
+
+    // Catch me if you can
+    private Track process_track_object(Json.Object raw_track) {
+        var raw_user = raw_track.get_object_member ("user");
+
+        return Track() {
+            id = raw_track.get_string_member ("id"),
+            title = raw_track.get_string_member ("title"),
+            user = User() {
+                id = raw_user.get_string_member ("id"),
+                handle = raw_user.get_string_member ("handle"),
+                name = raw_user.get_string_member ("name")
+            }
+        };
+    }
+
+    private Track get_trending () {
         try {
-            var parser = new Json.Parser ();
-            parser.load_from_data ((string) message.response_body.flatten ().data, -1);
-    
-            var root_object = parser.get_root ().get_object ();
-            var response = root_object.get_array_member ("data");
-            
-            int32 total = (int32) response.get_length ();
-            uint rand = (uint) GLib.Random.int_range(0, total);
+            tracks = req_data_array ("tracks/trending");
+            total_tracks = (int32) tracks.get_length ();
+            uint rand = (uint) GLib.Random.int_range(0, total_tracks);
 
-            var raw_track = response.get_object_element(rand);
-            var raw_user = raw_track.get_object_member ("user");
-
-            var track = Track() {
-                id = raw_track.get_string_member ("id"),
-                title = raw_track.get_string_member ("title"),
-                user = User() {
-                    id = raw_user.get_string_member ("id"),
-                    handle = raw_user.get_string_member ("handle"),
-                    name = raw_user.get_string_member ("name")
-                }
-            };
-
-            return track;
-
+            return process_track_object(tracks.get_object_element (rand));
         } catch (Error e) {
             stderr.printf ("I guess something is not working...\n");
-            return Track() {title = "Something went wrong..."};
+
+            var notification = new Notification (_("Error...\n"));
+            notification.set_body (_("My bad, something's not working again..."));
+            send_notification ("com.github.kerkkoh.ElementaryAudius", notification);
+
+            return Track() {title = ""};
         }
     }
 
@@ -129,25 +141,43 @@ public class Application : Gtk.Application {
         main_window.default_height = 300;
         main_window.default_width = 300;
         main_window.title = "ElementaryAudius";
-        var title_label = new Gtk.Label (_("Notifications"));
-        var show_button = new Gtk.Button.with_label (_("Show"));
+        var title_label = new Gtk.Label (_("ElementaryAudius"));
+        var play_button = new Gtk.Button.with_label (_("Play random trending track"));
+        var stop_button = new Gtk.Button.with_label (_("Stop"));
+        var pause_button = new Gtk.Button.with_label (_("Pause"));
+        var link_button = new Gtk.LinkButton.with_label ("https://audius.co/trending", _("Discover this track on Audius.co"));
         
         var grid = new Gtk.Grid ();
         grid.orientation = Gtk.Orientation.VERTICAL;
         grid.row_spacing = 6;
         grid.add (title_label);
-        grid.add (show_button);
+        grid.add (play_button);
+        grid.add (stop_button);
+        grid.add (pause_button);
+        grid.add (link_button);
+        player = new StreamPlayer ();
         get_api_endpoint();
 
-        show_button.clicked.connect (() => {
+        play_button.clicked.connect (() => {
             var some_track = get_trending ();
 
+            link_button.set_uri("https://audius.co/tracks/"+some_track.id);
+
+            print(api_endpoint + "/v1/tracks/" + some_track.id + "/stream");
+            player.stop ();
             player.play (api_endpoint + "/v1/tracks/" + some_track.id + "/stream");
+            print("Returned from play\n");
 
             var notification = new Notification (_(some_track.title));
             notification.set_body (_("By " + some_track.user.handle));
-        
+
             send_notification ("com.github.kerkkoh.ElementaryAudius", notification);
+        });
+        stop_button.clicked.connect (() => {
+            player.stop ();
+        });
+        pause_button.clicked.connect (() => {
+            player.pause ();
         });
         
         main_window.add (grid);

@@ -2,14 +2,17 @@ using Gst;
 
 public class StreamPlayer {
 
+    const bool DEBUG = false;
+
     private MainLoop loop = new MainLoop ();
+    dynamic Element m_play;
 
     private void foreach_tag (Gst.TagList list, string tag) {
         switch (tag) {
         case "title":
             string tag_string;
             list.get_string (tag, out tag_string);
-            stdout.printf ("tag: %s = %s\n", tag, tag_string);
+            if (DEBUG) stdout.printf ("tag: %s = %s\n", tag, tag_string);
             break;
         default:
             break;
@@ -22,11 +25,13 @@ public class StreamPlayer {
             GLib.Error err;
             string debug;
             message.parse_error (out err, out debug);
-            stdout.printf ("Error: %s\n", err.message);
-            loop.quit ();
+            if (DEBUG) stdout.printf ("Error: %s\n", err.message);
+            // loop.quit ();
             break;
         case MessageType.EOS:
-            stdout.printf ("end of stream\n");
+            // loop.quit();
+            m_play.set_state (State.NULL);
+            if (DEBUG) stdout.printf ("end of stream\n");
             break;
         case MessageType.STATE_CHANGED:
             Gst.State oldstate;
@@ -34,13 +39,13 @@ public class StreamPlayer {
             Gst.State pending;
             message.parse_state_changed (out oldstate, out newstate,
                                          out pending);
-            stdout.printf ("state changed: %s->%s:%s\n",
+                                         if (DEBUG) stdout.printf ("state changed: %s->%s:%s\n",
                            oldstate.to_string (), newstate.to_string (),
                            pending.to_string ());
             break;
         case MessageType.TAG:
             Gst.TagList tag_list;
-            stdout.printf ("taglist found\n");
+            if (DEBUG) stdout.printf ("taglist found\n");
             message.parse_tag (out tag_list);
             tag_list.foreach ((TagForeachFunc) foreach_tag);
             break;
@@ -51,15 +56,40 @@ public class StreamPlayer {
         return true;
     }
 
-    public void play (string stream) {
-        dynamic Element play = ElementFactory.make ("playbin", "play");
-        play.uri = stream;
+    private bool is_playing () {
+        State state;
+        State pending;
+        ClockTime ct = 100000;
+        StateChangeReturn succ = m_play.get_state(out state, out pending, ct);
+        if (succ == StateChangeReturn.FAILURE) return false;
+        return (state == State.PLAYING);
+    }
 
-        Gst.Bus bus = play.get_bus ();
+    public void play (string stream) {
+        m_play = ElementFactory.make ("playbin", "play");
+        m_play.uri = stream;
+
+        Gst.Bus bus = m_play.get_bus ();
         bus.add_watch (0, bus_callback);
 
-        play.set_state (State.PLAYING);
+        m_play.set_state (State.PLAYING);
 
-        loop.run ();
+        //loop.run ();
+        return;
+    }
+
+    public void stop () {
+        if (is_playing ()) {
+            m_play.set_state (State.NULL);
+            loop.quit ();
+        }
+    }
+
+    public void pause () {
+        if (is_playing ()) {
+            m_play.set_state (State.PAUSED);
+        } else {
+            m_play.set_state (State.PLAYING);
+        }
     }
 }
