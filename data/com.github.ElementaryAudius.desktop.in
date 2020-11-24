@@ -1,11 +1,11 @@
 [Desktop Entry]
 Type=Application
-Name=Name
-Comment=Comment
-GenericName=GenericName
+Name=ElementaryAudius
+Comment=Minimalistic Audius client
+GenericName=Audius Client
 Exec=com.github.ElementaryAudius %U
 Icon=applications-multimedia
 Terminal=false
-Categories=Utility;GTK;Development;
-Keywords=Develop
+Categories=Utility;Audio;
+Keywords=Audius;Streaming;Audio;
 X-GNOME-UsesNotifications=true
