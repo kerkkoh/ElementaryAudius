@@ -16,7 +16,7 @@ Ensure you have these dependencies installed
 * gtk+-3.0
 * switchboard-2.0
 * libsoup2.4-dev
-* json-glib-1.0
+* json-glib-1.0 / libjson-glib-dev
 * libgstreamer-plugins-base1.0-dev
 
 ## Install, build and run
