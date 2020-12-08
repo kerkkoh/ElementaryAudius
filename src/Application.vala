@@ -26,51 +26,9 @@
 * Authored by: Kerkkoh <superihippo@gmail.com>
 */
 
-struct User {
-    /*int64 album_count;
-    string bio;
-    string	cover_photo;
-    int64 followee_count;
-    int64 follower_count;
-    string handle;*/
-    string id;
-    /*bool is_verified;
-    string location;*/
-    string name;
-    /*int64 playlist_count;
-    int64 repost_count;
-    int64 track_count;*/
-}
-struct Track_Artwork {
-    string img_150x150;
-    //string img_480x480;
-    //string img_1000x1000;
-}
-struct Track {
-    Track_Artwork artwork;
-    string id;
-    /*string mood;
-    string release_date;
-    string remix_parent_id;
-    int64 repost_count;
-    int64 favorite_count;
-    string tags;
-    string description;
-    string genre;
-    int64 duration;
-    bool downloadable;
-    int64 play_count;*/
-    string title;
-    User user;
-}
-
 public class Application : Gtk.Application {
 
-    private static string api_endpoint = "https://discoveryprovider.audius.co";
     private static StreamPlayer player;
-    private Json.Array tracks = new Json.Array ();
-    private int32 total_tracks = 0;
-    private uint track_idx = 0;
     private bool has_played = false;
     private bool show_notifications = true;
 
@@ -90,113 +48,10 @@ public class Application : Gtk.Application {
         send_notification ("com.github.kerkkoh.ElementaryAudius", notification);
     }
 
-    private void get_api_endpoint () {
-        var uri = "https://api.audius.co/";
-
-        var session = new Soup.Session ();
-        var message = new Soup.Message ("GET", uri);
-        session.send_message (message);
-
-        try {
-            var parser = new Json.Parser ();
-            parser.load_from_data ((string) message.response_body.flatten ().data, -1);
-    
-            var root_object = parser.get_root ().get_object ();
-            var response = root_object.get_array_member ("data");
-            
-            int32 total = (int32) response.get_length ();
-            uint rand = (uint) GLib.Random.int_range(0, total);
-
-            api_endpoint = response.get_string_element(rand);
-
-            stdout.printf ("New api endpoint: %s\n", api_endpoint);
-        } catch (Error e) {
-            stderr.printf ("I guess something is not working...\n");
-        }
-    }
-
-    // Catch me if you can
-    private Json.Array req_data_array(string route, string query_parameters = "") throws Error {
-        var session = new Soup.Session ();
-        var q_params = "?app_name=ElementaryAudius";
-        if (query_parameters != "") {
-            q_params += query_parameters;
-        }
-        var message = new Soup.Message ("GET", api_endpoint+"/v1/"+route+q_params);
-        // print(api_endpoint+"/v1/"+route);
-        session.send_message (message);
-
-        var parser = new Json.Parser ();
-        parser.load_from_data ((string) message.response_body.flatten ().data, -1);
-
-        var root_object = parser.get_root ().get_object ();
-        return root_object.get_array_member ("data");
-    }
-
-    // Catch me if you can
-    private Track process_track_object(Json.Object raw_track) throws Error {
-        var raw_user = raw_track.get_object_member ("user");
-        var raw_artwork = raw_track.get_object_member ("artwork");
-
-        return Track() {
-            artwork = Track_Artwork () {
-                img_150x150 = raw_artwork.get_string_member ("150x150")//,
-                //img_480x480 = raw_artwork.get_string_member ("480x480"),
-                //img_1000x1000 = raw_artwork.get_string_member ("1000x1000")
-            },
-            id = raw_track.get_string_member ("id"),
-            title = raw_track.get_string_member ("title"),
-            user = User() {
-                id = raw_user.get_string_member ("id"),
-                //handle = raw_user.get_string_member ("handle"),
-                name = raw_user.get_string_member ("name")
-            }
-        };
-    }
-
-    private Gdk.Pixbuf get_image (string uri) {
-        var session = new Soup.Session ();
-        var message = new Soup.Message ("GET", uri);
-        session.send_message (message);
-
-        var mem_ipt_stream = new GLib.MemoryInputStream.from_data(message.response_body.data);
-        return new Gdk.Pixbuf.from_stream(mem_ipt_stream);
-    }
-
-    private Track get_trending (bool in_order = true, int delta = 0) {
-        try {
-            total_tracks = (int32) tracks.get_length ();
-            if (in_order) {
-                track_idx += delta;
-            } else {
-                track_idx = (uint) GLib.Random.int_range(0, total_tracks);
-            }
-
-            if (track_idx >= total_tracks) track_idx = 0;
-
-            return process_track_object(tracks.get_object_element (track_idx));
-        } catch (Error e) {
-            stderr.printf ("I guess something is not working...\n");
-
-            show_notification("Error...", "My bad, something's wrong with the connection between ElementaryAudius and Audius... Try again later?", "network-error");
-
-            return Track() {title = ""};
-        }
-    }
-
     private void play(ref Gtk.LinkButton link_button, ref Gtk.Label playing_label, ref Gtk.Image album_art, bool in_order, int delta = 0) {
-        var some_track = get_trending (in_order, delta);
-
-        link_button.set_uri("https://audius.co/tracks/"+some_track.id);
-
-        // print(api_endpoint + "/v1/tracks/" + some_track.id + "/stream");
+        player.get_trending (in_order, delta);
         player.stop ();
-        player.play (api_endpoint + "/v1/tracks/" + some_track.id + "/stream");
-
-        playing_label.set_label(some_track.user.name + " - " + some_track.title);
-        album_art.set_from_pixbuf(get_image (some_track.artwork.img_150x150));
-
-        show_notification(some_track.title, "By " + some_track.user.name);
+        player.play ();
     }
 
     private void pause_or_play (ref Gtk.LinkButton link_button, ref Gtk.Label playing_label, ref Gtk.Image album_art, ref Gtk.Button pause_button, ref Gtk.Button play_button) {
@@ -214,17 +69,32 @@ public class Application : Gtk.Application {
         player.pause ();
     }
 
+    private void update_duration_bar (int64 current, int64 duration, ref Gtk.Label duration_label) {
+        string duration_bar = "";
+        double curr = (double) current;
+        double durr = (double) duration;
+        int done = (int) ((curr/durr) * 10);
+        if (done == 0) duration_bar += ">";
+        for (int i = 0; i < done; i++) {
+            if (i == done - 1) duration_bar += ">";
+            else duration_bar += "-";
+        }
+        for (int i = 0; i < 9-done; i++) {
+            duration_bar += "#";
+        }
+        duration_label.set_label(_(current.to_string() + " " + duration_bar + " " + duration.to_string()));
+    }
+
     protected override void activate () {
-        get_api_endpoint();
-        tracks = req_data_array ("tracks/trending"); //users/DN31N/tracks
         var main_window = new Gtk.ApplicationWindow (this);
         main_window.set_icon_name("applications-multimedia");
         main_window.default_height = 300;
         main_window.default_width = 280;
         main_window.title = "ElementaryAudius";
         var title_label = new Gtk.Label (_("Now playing:"));
-        var playing_label = new Gtk.Label (_("... ... ... ..."));
+        var playing_label = new Gtk.Label (_("Loading Audius..."));
         var album_art = new Gtk.Image ();
+        var duration_label = new Gtk.Label (_(""));
         var random_button = new Gtk.Button.with_label (_("Play random trending track"));
         var previous_button = new Gtk.Button.from_icon_name("media-skip-backward-symbolic");
         var next_button = new Gtk.Button.from_icon_name("media-skip-forward-symbolic");
@@ -247,6 +117,7 @@ public class Application : Gtk.Application {
         grid.add (title_label);
         grid.add (playing_label);
         grid.add (album_art);
+        grid.add (duration_label);
         grid.add (random_button);
         var buttons = new Gtk.Grid ();
         buttons.attach(previous_button, 0, 0, 1, 1);
@@ -262,20 +133,20 @@ public class Application : Gtk.Application {
         notif_grid.attach(show_notif_label, 2, 0, 1, 1);
         grid.add (notif_grid);
         grid.add (link_button);
-        player = new StreamPlayer ();
 
-        title_label.set_hexpand(true);
-        playing_label.set_hexpand(true);
+        title_label.set_hexpand (true);
+        playing_label.set_hexpand (true);
         playing_label.set_line_wrap(true);
-        playing_label.set_justify(Gtk.Justification.CENTER);
-        album_art.set_hexpand(true);
-        random_button.set_hexpand(true);
-        previous_button.set_hexpand(true);
-        next_button.set_hexpand(true);
-        play_button.set_hexpand(true);
-        pause_button.set_hexpand(true);
-        show_notif_label.set_justify(Gtk.Justification.LEFT);
-        link_button.set_hexpand(false);
+        playing_label.set_justify (Gtk.Justification.CENTER);
+        album_art.set_hexpand (true);
+        duration_label.set_hexpand (true);
+        random_button.set_hexpand (true);
+        previous_button.set_hexpand (true);
+        next_button.set_hexpand (true);
+        play_button.set_hexpand (true);
+        pause_button.set_hexpand (true);
+        show_notif_label.set_justify (Gtk.Justification.LEFT);
+        link_button.set_hexpand (false);
 
         random_button.clicked.connect (() => {
             play(ref link_button, ref playing_label, ref album_art, false);
@@ -300,6 +171,56 @@ public class Application : Gtk.Application {
         main_window.add (grid);
         main_window.show_all ();
         pause_button.hide();
+        buttons.hide();
+
+        bool is_ready = false;
+        var track_time = new TimeoutSource(1000);
+
+        player = new StreamPlayer (ref is_ready, ref track_time);
+
+        track_time.attach(null);
+
+        player.song_changed.connect (() => {
+            var some_track = player.get_current_track ();
+
+            link_button.set_uri("https://audius.co/tracks/"+some_track.id);
+    
+            playing_label.set_label(some_track.user.name + " - " + some_track.title);
+            album_art.set_from_pixbuf(player.get_current_track_image ());
+
+            update_duration_bar (player.current_seconds, some_track.duration, ref duration_label);
+    
+            show_notification(some_track.title, "By " + some_track.user.name);
+        });
+        player.play_state_changed.connect ((new_state) => {
+            if (new_state != Gst.State.PLAYING) {
+                pause_button.hide();
+                play_button.show();
+            } else {
+                play_button.hide();
+                pause_button.show();
+            }
+        });
+        player.has_notification.connect ((title, body, icon) => {
+            show_notification(title, body, icon);
+        });
+        player.duration_tick.connect ((current_seconds) => {
+            update_duration_bar (current_seconds, (player.get_current_track ()).duration, ref duration_label);
+        });
+
+        var time = new TimeoutSource(100);
+        time.set_callback(() => {
+            if (is_ready) {
+                playing_label.set_label("Press play!");
+                buttons.show();
+                Gtk.main_quit();
+                return false;
+            }
+            return true;
+        });
+        time.attach(null);
+
+        Gtk.main();
     }
 
     public static int main (string[] args) {
