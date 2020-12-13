@@ -4,6 +4,8 @@ Native Elementary player for Audius. Currently supports only playing trending tr
 
 This app is NOT yet available on the elementary OS AppCenter. It might be one day if I get around to it.
 
+You can run this on Ubuntu as well, as long as you have the dependencies installed.
+
 # Install it from source
 
 You can of course download and install this app from source.
