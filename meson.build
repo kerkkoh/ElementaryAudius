@@ -14,6 +14,20 @@ add_project_arguments (
     language: 'c'
 )
 
+#am_cflags = [
+#    '-la',
+#    '-lb',
+#    '-lc',
+#    '-lb',
+#    '-lz'
+#]
+#add_global_arguments(am_cflags, language: 'c')
+#add_global_arguments('-lm', language: 'c')
+#add_global_arguments('-lpthread', language: 'c')
+
+#executable('prog', 'prog.cc', link_args : '-Wl,--linker-option')
+add_global_link_arguments('-lc','-lz','-lm','-lpthread', language: 'c')
+
 # Listing dependencies
 dependencies = [
     dependency ('glib-2.0'),

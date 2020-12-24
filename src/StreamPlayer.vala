@@ -34,6 +34,7 @@ public class StreamPlayer {
     public signal void play_state_changed (Gst.State new_state);
     public signal void has_notification (string title, string body, string icon);
     public signal void duration_tick (int64 current_seconds, int64 duration);
+    public signal void song_ended ();
     public bool m_initialized = false;
     public int64 current_seconds = 0;
 
@@ -50,8 +51,15 @@ public class StreamPlayer {
         m_tracks = req_data_array ("tracks/trending"); //users/DN31N/tracks
         track_time.set_callback (() => {
             if (is_playing ()) {
+                Gst.Format fmt = Gst.Format.TIME;
+                int64 current = -1;
+
+                // Query the current position of the stream:
+                if (!m_play.query_position (fmt, out current)) {
+                    stderr.puts ("Could not query current position.\n");
+                }
                 current_seconds++;
-                duration_tick (current_seconds, (get_current_track ()).duration);
+                duration_tick (current/Gst.SECOND, (get_current_track ()).duration);
             }
             return true;
         });
@@ -161,6 +169,11 @@ public class StreamPlayer {
         }
     }
 
+    public void seek(double position) {
+        int64 sec = (int64) ((get_current_track ()).duration * position);
+        m_play.seek_simple (Gst.Format.TIME, Gst.SeekFlags.FLUSH | Gst.SeekFlags.KEY_UNIT, sec * Gst.SECOND);
+    }
+
     // Player logic
 
     private void foreach_tag (Gst.TagList list, string tag) {
@@ -188,6 +201,7 @@ public class StreamPlayer {
             // loop.quit();
             m_play.set_state (State.NULL);
             if (DEBUG) stdout.printf ("end of stream\n");
+            song_ended ();
             break;
         case MessageType.STATE_CHANGED:
             Gst.State oldstate;

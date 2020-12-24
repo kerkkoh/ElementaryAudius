@@ -69,20 +69,25 @@ public class Application : Gtk.Application {
         player.pause ();
     }
 
-    private void update_duration_bar (int64 current, int64 duration, ref Gtk.Label duration_label) {
-        string duration_bar = "";
-        double curr = (double) current;
-        double durr = (double) duration;
-        int done = (int) ((curr/durr) * 10);
-        if (done == 0) duration_bar += ">";
-        for (int i = 0; i < done; i++) {
-            if (i == done - 1) duration_bar += ">";
-            else duration_bar += "-";
+    private string seconds_to_hms (int64 seconds) {
+        string result = "";
+        double h = GLib.Math.floor ((double) seconds / (60*60));
+        if (h > 0) {
+            seconds -= 60*60*((int64) h);
+            result += h.to_string() + ":";
         }
-        for (int i = 0; i < 9-done; i++) {
-            duration_bar += "#";
+        double m = GLib.Math.floor ((double) seconds / 60);
+        result += m.to_string() + ":";
+        if (m > 0) {
+            seconds -= 60*((int64) m);
         }
-        duration_label.set_label(_(current.to_string() + " " + duration_bar + " " + duration.to_string()));
+        result += seconds.to_string();
+        return result;
+    }
+    private void update_duration_bar (int64 current, int64 duration, ref Gtk.Label duration_label, ref Gtk.Scale slider, ref Gtk.Label duration_full) {
+        slider.adjustment.value = ((double) current / (double) duration)*1000;
+        duration_label.set_label(_(seconds_to_hms(current)));
+        duration_full.set_label(_(seconds_to_hms(duration)));
     }
 
     protected override void activate () {
@@ -95,6 +100,8 @@ public class Application : Gtk.Application {
         var playing_label = new Gtk.Label (_("Loading Audius..."));
         var album_art = new Gtk.Image ();
         var duration_label = new Gtk.Label (_(""));
+        var duration_slider = new Gtk.Scale.with_range (Gtk.Orientation.HORIZONTAL, 0, 1000, 1);
+        var duration_full = new Gtk.Label (_(""));
         var random_button = new Gtk.Button.with_label (_("Play random trending track"));
         var previous_button = new Gtk.Button.from_icon_name("media-skip-backward-symbolic");
         var next_button = new Gtk.Button.from_icon_name("media-skip-forward-symbolic");
@@ -117,7 +124,11 @@ public class Application : Gtk.Application {
         grid.add (title_label);
         grid.add (playing_label);
         grid.add (album_art);
-        grid.add (duration_label);
+        var duration = new Gtk.Grid ();
+        duration.attach(duration_label, 0, 0, 1, 1);
+        duration.attach(duration_slider, 1, 0, 1, 1);
+        duration.attach(duration_full, 2, 0, 1, 1);
+        grid.add(duration);
         grid.add (random_button);
         var buttons = new Gtk.Grid ();
         buttons.attach(previous_button, 0, 0, 1, 1);
@@ -140,6 +151,8 @@ public class Application : Gtk.Application {
         playing_label.set_justify (Gtk.Justification.CENTER);
         album_art.set_hexpand (true);
         duration_label.set_hexpand (true);
+        duration_slider.set_hexpand (true);
+        duration_full.set_hexpand (true);
         random_button.set_hexpand (true);
         previous_button.set_hexpand (true);
         next_button.set_hexpand (true);
@@ -147,6 +160,7 @@ public class Application : Gtk.Application {
         pause_button.set_hexpand (true);
         show_notif_label.set_justify (Gtk.Justification.LEFT);
         link_button.set_hexpand (false);
+        duration_slider.set_draw_value (false);
 
         random_button.clicked.connect (() => {
             play(ref link_button, ref playing_label, ref album_art, false);
@@ -180,6 +194,11 @@ public class Application : Gtk.Application {
 
         track_time.attach(null);
 
+        duration_slider.change_value.connect ((scroll, new_value) => {
+            player.seek(new_value/1000.0);
+            return false;
+        });
+
         player.song_changed.connect (() => {
             var some_track = player.get_current_track ();
 
@@ -188,7 +207,7 @@ public class Application : Gtk.Application {
             playing_label.set_label(some_track.user.name + " - " + some_track.title);
             album_art.set_from_pixbuf(player.get_current_track_image ());
 
-            update_duration_bar (player.current_seconds, some_track.duration, ref duration_label);
+            update_duration_bar (player.current_seconds, some_track.duration, ref duration_label, ref duration_slider, ref duration_full);
     
             show_notification(some_track.title, "By " + some_track.user.name);
         });
@@ -205,7 +224,10 @@ public class Application : Gtk.Application {
             show_notification(title, body, icon);
         });
         player.duration_tick.connect ((current_seconds) => {
-            update_duration_bar (current_seconds, (player.get_current_track ()).duration, ref duration_label);
+            update_duration_bar (current_seconds, (player.get_current_track ()).duration, ref duration_label, ref duration_slider, ref duration_full);
+        });
+        player.song_ended.connect (() => {
+            play(ref link_button, ref playing_label, ref album_art, true, 1);
         });
 
         var time = new TimeoutSource(100);
