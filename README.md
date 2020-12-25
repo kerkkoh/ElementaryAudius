@@ -2,6 +2,10 @@
 
 Native elementaryOS player for Audius. Currently supports playing trending tracks and tracks from any of the artists on Audius.
 
+![Trending page](https://github.com/kerkkoh/ElementaryAudius/blob/main/screenshots/0_trending.png?raw=true)
+![Search on trending page](https://github.com/kerkkoh/ElementaryAudius/blob/main/screenshots/1_search.png?raw=true)
+![Artist page](https://github.com/kerkkoh/ElementaryAudius/blob/main/screenshots/2_artist.png?raw=true)
+
 This app is NOT yet available on the elementary OS AppCenter. It might be one day if I get around to it. This is still not really a music player, but rather like one of those old school mp3 players where you just pressed previous, pause/play, and next song. Hence, I believe introducing it to the appstore as is would be detrimental.
 
 You can run this on Ubuntu as well, as long as you have all the dependencies installed.
