@@ -1,5 +1,5 @@
 /*
-* Idk why I'm even including this license in here. I guess no warranty? YEAH! No warranty! You heard me.
+* Idk why I'm even including this license in here. I guess no warranty? YEAH! No warranty! THAT'S RIGHT. You heard me.
 *
 * The MIT License (MIT)
 *
@@ -107,6 +107,7 @@ public class Application : Gtk.Application {
         var next_button = new Gtk.Button.from_icon_name("media-skip-forward-symbolic");
         var pause_button = new Gtk.Button.from_icon_name("media-playback-pause-symbolic");
         var play_button = new Gtk.Button.from_icon_name("media-playback-start-symbolic");
+        var volume_slider = new Gtk.Scale.with_range (Gtk.Orientation.HORIZONTAL, 0, 1, 0.05);
         var show_notif_toggle = new Gtk.Switch ();
         show_notif_toggle.set_active(true);
         var show_notif_label = new Gtk.Label(_("Show notifications"));
@@ -136,6 +137,7 @@ public class Application : Gtk.Application {
         buttons.attach(play_button, 1, 0, 1, 1);
         buttons.attach(next_button, 2, 0, 1, 1);
         grid.add(buttons);
+        grid.add (volume_slider);
         var notif_grid = new Gtk.Grid ();
         notif_grid.column_spacing = 6;
         // var notif_padding = new Gtk.Label (_(" "));
@@ -161,6 +163,7 @@ public class Application : Gtk.Application {
         show_notif_label.set_justify (Gtk.Justification.LEFT);
         link_button.set_hexpand (false);
         duration_slider.set_draw_value (false);
+        volume_slider.set_draw_value (false);
 
         random_button.clicked.connect (() => {
             play(ref link_button, ref playing_label, ref album_art, false);
@@ -186,6 +189,7 @@ public class Application : Gtk.Application {
         main_window.show_all ();
         pause_button.hide();
         buttons.hide();
+        duration_slider.hide();
 
         bool is_ready = false;
         var track_time = new TimeoutSource(1000);
@@ -198,8 +202,16 @@ public class Application : Gtk.Application {
             player.seek(new_value/1000.0);
             return false;
         });
+        volume_slider.change_value.connect ((scroll, new_value) => {
+            // Good enough approximation
+            player.set_volume(Math.pow(new_value, 4));
+            return false;
+        });
+        player.set_volume(Math.pow(0.5, 4));
+        volume_slider.adjustment.value = 0.5;
 
         player.song_changed.connect (() => {
+            duration_slider.show();
             var some_track = player.get_current_track ();
 
             link_button.set_uri("https://audius.co/tracks/"+some_track.id);
@@ -233,7 +245,7 @@ public class Application : Gtk.Application {
         var time = new TimeoutSource(100);
         time.set_callback(() => {
             if (is_ready) {
-                playing_label.set_label("Press play!");
+                playing_label.set_label("");
                 buttons.show();
                 Gtk.main_quit();
                 return false;

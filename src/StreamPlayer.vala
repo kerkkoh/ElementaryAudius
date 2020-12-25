@@ -173,6 +173,9 @@ public class StreamPlayer {
         int64 sec = (int64) ((get_current_track ()).duration * position);
         m_play.seek_simple (Gst.Format.TIME, Gst.SeekFlags.FLUSH | Gst.SeekFlags.KEY_UNIT, sec * Gst.SECOND);
     }
+    public void set_volume(double volume) {
+        m_play.volume = volume;
+    }
 
     // Player logic
 
