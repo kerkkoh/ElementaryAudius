@@ -31,6 +31,7 @@ public class Application : Gtk.Application {
     private static StreamPlayer player;
     private bool has_played = false;
     private bool show_notifications = true;
+    private Gee.ArrayList<User?> m_results;
 
     public Application () {
         Object (
@@ -49,6 +50,7 @@ public class Application : Gtk.Application {
     }
 
     private void play(ref Gtk.LinkButton link_button, ref Gtk.Label playing_label, ref Gtk.Image album_art, bool in_order, int delta = 0) {
+        if (player.total_tracks() == 0) return;
         player.get_trending (in_order, delta);
         player.stop ();
         player.play ();
@@ -81,7 +83,8 @@ public class Application : Gtk.Application {
         if (m > 0) {
             seconds -= 60*((int64) m);
         }
-        result += seconds.to_string();
+        var secprefix = seconds < 10 ? "0" : "";
+        result += secprefix + seconds.to_string();
         return result;
     }
     private void update_duration_bar (int64 current, int64 duration, ref Gtk.Label duration_label, ref Gtk.Scale slider, ref Gtk.Label duration_full) {
@@ -96,13 +99,16 @@ public class Application : Gtk.Application {
         main_window.default_height = 300;
         main_window.default_width = 280;
         main_window.title = "ElementaryAudius";
-        var title_label = new Gtk.Label (_("Now playing:"));
+        var search_label = new Gtk.Label (_("Search for an artist:"));
+        var search_entry = new Gtk.SearchEntry ();
+        var search_results = new Gtk.ListBox ();
+        var title_label = new Gtk.Label (_("Now playing from Trending:"));
         var playing_label = new Gtk.Label (_("Loading Audius..."));
         var album_art = new Gtk.Image ();
         var duration_label = new Gtk.Label (_(""));
         var duration_slider = new Gtk.Scale.with_range (Gtk.Orientation.HORIZONTAL, 0, 1000, 1);
         var duration_full = new Gtk.Label (_(""));
-        var random_button = new Gtk.Button.with_label (_("Play random trending track"));
+        var random_button = new Gtk.Button.with_label (_("Play random track"));
         var previous_button = new Gtk.Button.from_icon_name("media-skip-backward-symbolic");
         var next_button = new Gtk.Button.from_icon_name("media-skip-forward-symbolic");
         var pause_button = new Gtk.Button.from_icon_name("media-playback-pause-symbolic");
@@ -122,13 +128,16 @@ public class Application : Gtk.Application {
         var padding_right = new Gtk.Label (_(" "));
         grid.attach(padding_left, -1, 99, 1, 1);
         grid.attach(padding_right, 2, 99, 1, 1);
+        grid.add (search_label);
+        grid.add (search_entry);
+        grid.add (search_results);
         grid.add (title_label);
         grid.add (playing_label);
         grid.add (album_art);
         var duration = new Gtk.Grid ();
         duration.attach(duration_label, 0, 0, 1, 1);
-        duration.attach(duration_slider, 1, 0, 1, 1);
-        duration.attach(duration_full, 2, 0, 1, 1);
+        duration.attach(duration_slider, 1, 0, 3, 1);
+        duration.attach(duration_full, 4, 0, 1, 1);
         grid.add(duration);
         grid.add (random_button);
         var buttons = new Gtk.Grid ();
@@ -147,6 +156,7 @@ public class Application : Gtk.Application {
         grid.add (notif_grid);
         grid.add (link_button);
 
+        search_entry.set_hexpand (true);
         title_label.set_hexpand (true);
         playing_label.set_hexpand (true);
         playing_label.set_line_wrap(true);
@@ -185,11 +195,14 @@ public class Application : Gtk.Application {
             return false;
         });
 
+        search_results.set_selection_mode(Gtk.SelectionMode.SINGLE);
+
         main_window.add (grid);
         main_window.show_all ();
-        pause_button.hide();
-        buttons.hide();
-        duration_slider.hide();
+        //search_results.hide ();
+        pause_button.hide ();
+        buttons.hide ();
+        duration_slider.hide ();
 
         bool is_ready = false;
         var track_time = new TimeoutSource(1000);
@@ -209,6 +222,12 @@ public class Application : Gtk.Application {
         });
         player.set_volume(Math.pow(0.5, 4));
         volume_slider.adjustment.value = 0.5;
+        search_results.row_activated.connect ((row) => {
+            var usr = m_results[row.get_index()];
+            player.set_user(usr);
+            search_results.hide();
+            main_window.resize(280, 300);
+        });
 
         player.song_changed.connect (() => {
             duration_slider.show();
@@ -222,6 +241,9 @@ public class Application : Gtk.Application {
             update_duration_bar (player.current_seconds, some_track.duration, ref duration_label, ref duration_slider, ref duration_full);
     
             show_notification(some_track.title, "By " + some_track.user.name);
+        });
+        player.playlist_changed.connect ((name) => {
+            title_label.set_label(_("Now playing from " + name + ":"));
         });
         player.play_state_changed.connect ((new_state) => {
             if (new_state != Gst.State.PLAYING) {
@@ -241,7 +263,43 @@ public class Application : Gtk.Application {
         player.song_ended.connect (() => {
             play(ref link_button, ref playing_label, ref album_art, true, 1);
         });
-
+        player.search_query_done.connect ((results) => {
+            search_results.foreach((w) => {
+                search_results.remove(w);
+            });
+            m_results = results;
+            for (var i = 0; i < m_results.size; i++) {
+                var row = new Gtk.ListBoxRow();
+                var label = new Gtk.Label(_(m_results[i].name));
+                row.add(label);
+                search_results.add(row);
+            }
+            search_results.show();
+            grid.show();
+            main_window.show_all ();
+            if (!player.is_playing()) {
+                pause_button.hide();
+                play_button.show();
+            } else {
+                play_button.hide();
+                pause_button.show();
+            }
+        });
+        player.search_query.connect (() => {
+            return search_entry.get_text ();
+        });
+        player.api_is_ready.connect (() => {
+            playing_label.set_label("");
+            buttons.show();
+            // smelly code :(
+            var some_track = player.get_current_track ();
+            link_button.set_uri("https://audius.co/tracks/"+some_track.id);
+            playing_label.set_label(some_track.user.name + " - " + some_track.title);
+            album_art.set_from_pixbuf(player.get_current_track_image ());
+            duration_slider.show();
+            update_duration_bar (player.current_seconds, some_track.duration, ref duration_label, ref duration_slider, ref duration_full);
+        });
+/*
         var time = new TimeoutSource(100);
         time.set_callback(() => {
             if (is_ready) {
@@ -254,7 +312,7 @@ public class Application : Gtk.Application {
         });
         time.attach(null);
 
-        Gtk.main();
+        Gtk.main();*/
     }
 
     public static int main (string[] args) {

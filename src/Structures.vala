@@ -10,8 +10,8 @@ public struct User {
     string location;*/
     string name;
     /*int64 playlist_count;
-    int64 repost_count;
-    int64 track_count;*/
+    int64 repost_count;*/
+    int64 track_count;
 }
 public struct Track_Artwork {
     string img_150x150;

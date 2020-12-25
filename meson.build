@@ -14,19 +14,7 @@ add_project_arguments (
     language: 'c'
 )
 
-#am_cflags = [
-#    '-la',
-#    '-lb',
-#    '-lc',
-#    '-lb',
-#    '-lz'
-#]
-#add_global_arguments(am_cflags, language: 'c')
-#add_global_arguments('-lm', language: 'c')
-#add_global_arguments('-lpthread', language: 'c')
-
-#executable('prog', 'prog.cc', link_args : '-Wl,--linker-option')
-add_global_link_arguments('-lc','-lz','-lm','-lpthread', language: 'c')
+add_global_link_arguments('-lm', language: 'c')
 
 # Listing dependencies
 dependencies = [
@@ -34,7 +22,8 @@ dependencies = [
     dependency ('gtk+-3.0'),
     dependency ('json-glib-1.0'),
     dependency ('libsoup-2.4'),
-    dependency ('gstreamer-audio-1.0')
+    dependency ('gstreamer-audio-1.0'),
+    dependency ('gee-0.8')
 ]
 
 subdir ('src')

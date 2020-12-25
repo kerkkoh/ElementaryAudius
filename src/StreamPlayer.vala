@@ -31,25 +31,41 @@ using Gst;
 public class StreamPlayer {
     public signal void api_is_ready ();
     public signal void song_changed ();
+    public signal void playlist_changed (string name);
     public signal void play_state_changed (Gst.State new_state);
     public signal void has_notification (string title, string body, string icon);
     public signal void duration_tick (int64 current_seconds, int64 duration);
     public signal void song_ended ();
+    public signal string search_query ();
+    public signal void search_query_done (Gee.ArrayList<User?> results);
     public bool m_initialized = false;
     public int64 current_seconds = 0;
 
+    private string m_search_query = "";
+    private string m_playing_user = "";
     private string api_endpoint;
     private Json.Array m_tracks = new Json.Array ();
-    private int32 total_tracks = 0;
     private uint track_idx = 0;
-    private MainLoop loop = new MainLoop ();
-    TimeoutSource time = new TimeoutSource (1000);
     dynamic Element m_play = ElementFactory.make ("playbin", "play");
+
+    public int32 total_tracks () {
+        return (int32) m_tracks.get_length ();
+    }
 
     public StreamPlayer (ref bool is_ready, ref TimeoutSource track_time) {
         get_api_endpoint ();
-        m_tracks = req_data_array ("tracks/trending"); //users/DN31N/tracks
         track_time.set_callback (() => {
+            var s = search_query();
+            if (s != m_search_query) {
+                m_search_query = s;
+                if (s == "" && m_playing_user != "") {
+                    reset_user();
+                } else {
+                    get_search_results.begin(m_search_query, (obj, res) => {
+                        get_search_results.end(res);
+                    });
+                }
+            }
             if (is_playing ()) {
                 Gst.Format fmt = Gst.Format.TIME;
                 int64 current = -1;
@@ -63,7 +79,6 @@ public class StreamPlayer {
             }
             return true;
         });
-        is_ready = true;
     }
 
     private void get_api_endpoint () {
@@ -71,43 +86,51 @@ public class StreamPlayer {
 
         var session = new Soup.Session ();
         var message = new Soup.Message ("GET", uri);
-        session.send_message (message);
-
-        try {
-            var parser = new Json.Parser ();
-            parser.load_from_data ((string) message.response_body.flatten ().data, -1);
+        session.queue_message (message, (sess, mess) => {
+            try {
+                var parser = new Json.Parser ();
+                parser.load_from_data ((string) mess.response_body.flatten ().data, -1);
+        
+                var root_object = parser.get_root ().get_object ();
+                var response = root_object.get_array_member ("data");
+                
+                int32 total = (int32) response.get_length ();
+                uint rand = (uint) GLib.Random.int_range (0, total);
     
-            var root_object = parser.get_root ().get_object ();
-            var response = root_object.get_array_member ("data");
-            
-            int32 total = (int32) response.get_length ();
-            uint rand = (uint) GLib.Random.int_range (0, total);
-
-            api_endpoint = response.get_string_element (rand);
-
-            if (DEBUG) stdout.printf("StreamPlayer :: api_is_ready\n");
-            api_is_ready ();
-
-            if (DEBUG) stdout.printf ("New api endpoint: %s\n", api_endpoint);
-        } catch (Error e) {
-            stderr.printf ("I guess something is not working...\n");
-        }
+                api_endpoint = response.get_string_element (rand);
+                req_data_array_cb ("tracks/trending", "", (tracks) => {
+                    m_tracks = tracks;
+                    api_is_ready ();
+                });
+    
+                if (DEBUG) stdout.printf("StreamPlayer :: api_is_ready\n");
+    
+                if (DEBUG) stdout.printf ("New api endpoint: %s\n", api_endpoint);
+            } catch (Error e) {
+                stderr.printf ("I guess something is not working...\n");
+            }
+        });
     }
-
-    private Json.Array req_data_array(string route, string query_parameters = "") throws Error {
+    public delegate void DataArrayCb (Json.Array data);
+    private void req_data_array_cb(string route, string query_parameters, DataArrayCb cb) {
         var session = new Soup.Session ();
         var q_params = "?app_name=ElementaryAudius";
         if (query_parameters != "") {
             q_params += query_parameters;
         }
+        
         var message = new Soup.Message ("GET", api_endpoint+"/v1/"+route+q_params);
-        session.send_message (message);
-
-        var parser = new Json.Parser ();
-        parser.load_from_data ((string) message.response_body.flatten ().data, -1);
-
-        var root_object = parser.get_root ().get_object ();
-        return root_object.get_array_member ("data");
+        session.queue_message (message, (sess, mess) => {
+            try {
+                var parser = new Json.Parser ();
+                parser.load_from_data ((string) message.response_body.flatten ().data, -1);
+    
+                var root_object = parser.get_root ().get_object ();
+                cb(root_object.get_array_member ("data"));
+            } catch (Error e) {
+                cb(new Json.Array());
+            }
+        });
     }
 
     private Track process_track_object(Json.Object raw_track) throws Error {
@@ -130,8 +153,15 @@ public class StreamPlayer {
             }
         };
     }
+    private User process_user_object(Json.Object raw_user) throws Error {
+        return User() {
+            id = raw_user.get_string_member ("id"),
+            name = raw_user.get_string_member ("name"),
+            track_count = raw_user.get_int_member ("track_count")
+        };
+    }
 
-    public Track get_current_track () {
+    public Track get_current_track () throws Error {
         return process_track_object(m_tracks.get_object_element (track_idx));
     }
 
@@ -150,20 +180,21 @@ public class StreamPlayer {
 
     public Track get_trending (bool in_order = true, int delta = 0) {
         try {
-            total_tracks = (int32) m_tracks.get_length ();
+            var total = total_tracks();
+            if (total == 0) {
+                return Track() {title = ""};
+            }
             if (in_order) {
                 track_idx += delta;
             } else {
-                track_idx = (uint) GLib.Random.int_range(0, total_tracks);
+                track_idx = (uint) GLib.Random.int_range(0, total);
             }
 
-            if (track_idx >= total_tracks) track_idx = 0;
+            if (track_idx >= total) track_idx = 0;
 
             return get_current_track ();
         } catch (Error e) {
-            stderr.printf ("I guess something is not working...\n");
-
-            has_notification ("Error...", "My bad, something's wrong with the connection between ElementaryAudius and Audius... Try again later?", "network-error");
+            has_notification ("Error...", "Something's wrong with the connection between you and Audius... Try later?", "network-error");
 
             return Track() {title = ""};
         }
@@ -175,6 +206,41 @@ public class StreamPlayer {
     }
     public void set_volume(double volume) {
         m_play.volume = volume;
+    }
+    public void set_user(User user) {
+        var user_id = user.id;
+        if (m_playing_user == user_id) return;
+        m_playing_user = user_id;
+        playlist_changed (user.name);
+        req_data_array_cb ("users/" + user_id + "/tracks", "", (tracks) => {
+            m_tracks = tracks;
+            track_idx = 0;
+            stop();
+            play();
+        });
+    }
+    public void reset_user() {
+        if (m_playing_user == "") return;
+        playlist_changed ("Trending");
+        m_playing_user = "";
+        req_data_array_cb ("tracks/trending", "", (tracks) => {
+            m_tracks = tracks;
+            track_idx = 0;
+            stop();
+            play();
+        });
+    }
+    private async void get_search_results(string query) {
+        req_data_array_cb ("users/search", "&query=" + query, (arr) => {
+            var arrlist = new Gee.ArrayList<User?>();
+            for (var i = 0; i < 4 && i < arr.get_length (); i++) {
+                var usr = process_user_object(arr.get_object_element (i));
+                if (usr.track_count > 0) {
+                    arrlist.add(usr);
+                }
+            }
+            search_query_done(arrlist);
+        });
     }
 
     // Player logic
@@ -228,16 +294,12 @@ public class StreamPlayer {
     }
 
     public bool is_playing () {
-        try {
-            State state;
-            State pending;
-            ClockTime ct = 100000;
-            StateChangeReturn succ = m_play.get_state(out state, out pending, ct);
-            if (succ == StateChangeReturn.FAILURE) return false;
-            return (state == State.PLAYING);
-        } catch (Error e) {
-            return false;
-        }
+        State state;
+        State pending;
+        ClockTime ct = 100000;
+        StateChangeReturn succ = m_play.get_state(out state, out pending, ct);
+        if (succ == StateChangeReturn.FAILURE) return false;
+        return (state == State.PLAYING);
     }
 
     public void play () {
