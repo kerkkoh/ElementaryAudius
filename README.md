@@ -10,6 +10,10 @@ This app is NOT yet available on the elementary OS AppCenter. It might be one da
 
 You can run this on Ubuntu as well, as long as you have all the dependencies installed.
 
+## Note
+
+[Vala? Niche, very](https://youtu.be/t4any72mFR0?si=JE2AKdjCoMaicyA_&t=3130). This was my first Vala project (and I quite liked it) actually based on just experience with loose C#-like scripting languages, Java, Scala + web. It seemed like a elementaryOS preferred language.
+
 # Install it from source
 
 You can of course download and install this app from source.
